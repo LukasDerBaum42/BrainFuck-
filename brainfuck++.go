@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"runtime"
 )
 
 func termInit() {
@@ -912,27 +913,46 @@ func compile_to_c(bytecode []instruction, out_name string) {
 	
 	sb.WriteString("#include <stdio.h>\n")
 	sb.WriteString("#include <stdint.h>\n")
-	sb.WriteString("#include <termios.h>\n")
-	sb.WriteString("#include <unistd.h>\n\n")
 
-	//sb.WriteString("uint8_t reg_main[0xffff] = {0};\n")
-	//sb.WriteString("uint16_t ptr_main = 0;\n\n")
-
-	sb.WriteString("struct termios orig_term;\n\n")
+	if runtime.GOOS == "windows" {
+		sb.WriteString("#include <windows.h>\n\n")
+		
+		sb.WriteString("DWORD orig_mode;\n")
+		sb.WriteString("HANDLE hStdin;\n\n")
+		
+		sb.WriteString("void term_init() {\n")
+		sb.WriteString("  hStdin = GetStdHandle(STD_INPUT_HANDLE);\n")
+		sb.WriteString("  GetConsoleMode(hStdin, &orig_mode);\n\n")
+		sb.WriteString("  DWORD raw_mode = orig_mode;\n")
+		sb.WriteString("  raw_mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);\n")
+		sb.WriteString("  raw_mode &= ~ENABLE_QUICK_EDIT_MODE;\n\n")
+		sb.WriteString("  SetConsoleMode(hStdin, raw_mode);\n")
+		sb.WriteString("}\n\n")
+		
+		sb.WriteString("void term_restore() {\n")
+		sb.WriteString("  SetConsoleMode(hStdin, orig_mode);\n")
+		sb.WriteString("}\n\n")
+	} else {
+		
+		sb.WriteString("#include <termios.h>\n")
+		sb.WriteString("#include <unistd.h>\n\n")
 	
-	sb.WriteString("void term_init() {\n")
-	sb.WriteString("  struct termios raw;\n")
-	sb.WriteString("  tcgetattr(STDIN_FILENO, &orig_term);\n")
-	sb.WriteString("  raw = orig_term;\n")
-	sb.WriteString("  raw.c_lflag &= ~(ICANON | ECHO);\n")
-	sb.WriteString("  raw.c_cc[VMIN] = 1;\n")
-	sb.WriteString("  raw.c_cc[VTIME] = 0;\n")
-	sb.WriteString("  tcsetattr(STDIN_FILENO, TCSANOW, &raw);\n")
-	sb.WriteString("}\n\n")
-
-	sb.WriteString("void term_restore() {\n")
-	sb.WriteString("  tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_term);\n")
-	sb.WriteString("}\n\n")
+		sb.WriteString("struct termios orig_term;\n\n")
+		
+		sb.WriteString("void term_init() {\n")
+		sb.WriteString("  struct termios raw;\n")
+		sb.WriteString("  tcgetattr(STDIN_FILENO, &orig_term);\n")
+		sb.WriteString("  raw = orig_term;\n")
+		sb.WriteString("  raw.c_lflag &= ~(ICANON | ECHO);\n")
+		sb.WriteString("  raw.c_cc[VMIN] = 1;\n")
+		sb.WriteString("  raw.c_cc[VTIME] = 0;\n")
+		sb.WriteString("  tcsetattr(STDIN_FILENO, TCSANOW, &raw);\n")
+		sb.WriteString("}\n\n")
+	
+		sb.WriteString("void term_restore() {\n")
+		sb.WriteString("  tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_term);\n")
+		sb.WriteString("}\n\n")
+	}
 	
 	for name := range TAPES {
 		sb.WriteString(fmt.Sprintf("uint8_t tape_%s[0xffff] = {0};\n", name))
