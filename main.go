@@ -1,5 +1,5 @@
 package main
-
+ 
 import (
 	"flag"
 	"fmt"
@@ -109,11 +109,11 @@ Language reference:
 
     !(name)(){...}
     	define a function with no arguments; the body is compiled recursively
-    !(name)(arg1, arg2, ...){...}
+    !(name)(^[N], ^[N], ...){...}
     	define a function with arguments; arguments are popped from the caller's stack and pushed onto the function's stack in reverse order
-    !(name)()(arg1, arg2, ...){...}
+    !(name)()(^[N], ^[N], ...){...}
     	define a function with no arguments and return values; return values are popped from the function's stack and pushed onto the caller's stack in reverse order
-    !(name)(arg1, arg2, ...)(arg1, arg2, ...){...}
+    !(name)(^[N], ^[N], ...)(^[N], ^[N], ...){...}
     	define a function with arguments and return values; arguments are popped from the caller's stack and pushed onto the function's stack in reverse order
     	return values are popped from the function's stack and pushed onto the caller's stack in reverse order
     !(name){...}
@@ -121,7 +121,7 @@ Language reference:
     ?(name)
     	call a previously defined function or macro
 
-    Note: args have to be defined with ^[N] where N is the size of the arg in bytes or with n for any size of bytes
+    Note: args have to be defined with ^[N] where N is the size of the arg in bytes or with the letter n for any size of bytes
 
   Switch / dispatch  (reads current cell, calls the matching function)
     $(default){ *V(fn)  *V(fn) ... }
@@ -137,8 +137,12 @@ Language reference:
   Comments
     // ...   everything after // until end of line is ignored
 
-  Import / external libraries
-  	Not yet implemented
+  Import/external libraries
+  	@(name) 
+   	or
+   	@0(name)
+    	to include a bfpp file called 'name'
+   
 
   Names
     Function and tape names may contain any characters except language keywords

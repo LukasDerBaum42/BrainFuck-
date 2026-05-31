@@ -1,5 +1,5 @@
 package main
-
+ 
 import (
 	"fmt"
 	"os"
@@ -137,7 +137,7 @@ var called_tapes  []callSite
 
 // keywordBytes lists every single-byte character that is a language keyword.
 // The multi-byte keyword '§' is checked separately in validateName.
-const keywordBytes = "+-<>[].,!?$§*:^v@(){}"
+const keywordBytes = "+-<>[].,!?$§*:^@(){}"
 
 // validateName returns an error if name contains a keyword character or whitespace.
 // nameStart is the byte offset of name[0] within code (used for error reporting).

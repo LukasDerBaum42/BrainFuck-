@@ -1,5 +1,5 @@
 package main
-
+ 
 func make_bytecode(code string, ctx compCtx) ([]instruction, error) {
 	var bytecode []instruction
 	var counter uint64

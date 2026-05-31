@@ -1,5 +1,5 @@
 package main
-
+ 
 import (
 	"fmt"
 	"os"
@@ -12,10 +12,12 @@ import (
 
 func compile_to_c(bytecode []instruction, out_name string) {
 	var sb strings.Builder
-
+	
+	sb.WriteString("#include <stdlib.h>\n")
 	sb.WriteString("#include <stdio.h>\n")
 	sb.WriteString("#include <stdint.h>\n")
 	sb.WriteString("#include <string.h>\n")
+	
 
 	if runtime.GOOS == "windows" {
 		sb.WriteString("#include <windows.h>\n\n")
@@ -227,11 +229,11 @@ func write_c_body(sb *strings.Builder, bytecode []instruction, indent string, is
 			case 0:
 				sb.WriteString(fmt.Sprintf("%sputchar(reg[*ptr]);\n", indent))
 			case 1:
-				sb.WriteString(fmt.Sprintf("%sprintf(\"%%d\", reg[*ptr]);\n", indent))
+				sb.WriteString(fmt.Sprintf("%sprintf(\"%%d\\0\", reg[*ptr]);\n", indent))
 			case 2:
-				sb.WriteString(fmt.Sprintf("%sprintf(\"02x%%02x\", reg[*ptr]);\n", indent))
+				sb.WriteString(fmt.Sprintf("%sprintf(\"%%02x\\0\", reg[*ptr]);\n", indent))
 			case 3:
-				sb.WriteString(fmt.Sprintf("%sprintf(\"08b%%08b\", reg[*ptr]);\n", indent))
+				sb.WriteString(fmt.Sprintf("%sprintf(\"%%08b\\0\", reg[*ptr]);\n", indent))
 			}
 		case 7:
 			sb.WriteString(fmt.Sprintf("%sreg[*ptr] = getchar();\n", indent))

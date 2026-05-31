@@ -1,0 +1,253 @@
+// t_stack.bfpp — tests for function arguments, return values, and stack ops
+
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+!(nl){
+    [-] +10 .
+}
+
+!(print_num){
+    .1 ?(nl)
+}
+
+
+// ── test 1: single arg, no return ─────────────────────────────────────────────
+// push 42; function adds 10 and prints → expect 52
+
+!(add10_print)(^1){
+    v +10 .1 ?(nl)
+}
+
+!(test_single_arg){
+    [-] +42 ^1
+    ?(add10_print)
+}
+
+
+// ── test 2: two args, no return ───────────────────────────────────────────────
+// push b=3, a=7; function prints a+b → expect 10
+// args reversed on function stack: a is on top, b is below
+
+!(sum_print)(^1, ^1){
+    v             // a → cell[0]
+    > v           // b → cell[1]
+    <
+    [->+<]        // cell[0] += cell[1]
+    > .1 ?(nl)    // print 10
+    <
+}
+
+!(test_two_args){
+    [-] +3 ^1     // push b=3
+    [-] +7 ^1     // push a=7
+    ?(sum_print)
+}
+
+
+// ── test 3: no args, single return ────────────────────────────────────────────
+// function returns 99 → caller prints it → expect 99
+
+!(ret99)()(^1){
+    [-] +99 ^1
+}
+
+!(test_single_ret){
+    ?(ret99)
+    v .1 ?(nl)
+}
+
+
+// ── test 4: one arg, one return ───────────────────────────────────────────────
+// double(13) → expect 26
+
+!(double)(^1)(^1){
+    [-] > [-] > [-] > [-] > [-] <4
+    v                 // arg → cell[0]
+    [->+>+<<]         // cell[1]=arg, cell[2]=arg, cell[0]=0
+    >[-<+>]           // cell[0] += cell[1]  →  cell[0] = 1*arg
+    <
+    >>[-<<+>>]        // cell[0] += cell[2]  →  cell[0] = 2*arg
+    <<
+    ^1
+}
+
+!(test_arg_and_ret){
+    [-] +13 ^1
+    ?(double)
+    v .1 ?(nl)        // expect 26
+}
+
+
+// ── test 5: two args, two returns ─────────────────────────────────────────────
+// swap(a=9, b=5) → expect 9 then 5 back on caller stack
+
+!(swap)(^1, ^1)(^1, ^1){
+    v > v <           // cell[0]=a=9, cell[1]=b=5
+    > ^1 < ^1         // push b then a (reversed → caller gets a on top)
+}
+
+!(test_swap){
+    [-] +5 ^1         // push b=5
+    [-] +9 ^1         // push a=9
+    ?(swap)
+    v .1 ?(nl)        // expect b=5
+    v .1 ?(nl)        // expect a=9
+}
+
+
+// ── test 6: ^^ move zeroes source cell ────────────────────────────────────────
+// expect: 0 (source after move), then 7 (popped value)
+
+!(test_move){
+    [-] +7
+    ^^1               // move: stack gets 7, cell becomes 0
+    .1 ?(nl)          // expect 0
+    v .1 ?(nl)        // expect 7
+}
+
+
+// ── test 7: wildcard arg (n) ──────────────────────────────────────────────────
+// expect 55
+
+!(print_any)(n){
+    v .1 ?(nl)
+}
+
+!(test_wildcard){
+    [-] +55 ^1
+    ?(print_any)
+}
+
+
+// ── test 8: plain stack LIFO (no function calls) ──────────────────────────────
+// push 11, 22, 33; pop all three — expect 33, 22, 11
+
+!(test_stack_lifo){
+    [-] +11 ^1
+    [-] +22 ^1
+    [-] +33 ^1
+    v .1 ?(nl)        // expect 33
+    v .1 ?(nl)        // expect 22
+    v .1 ?(nl)        // expect 11
+}
+
+
+// ── test 9: stack is independent of tape pointer position ─────────────────────
+// push from cell[0], do unrelated work far away, pop to cell[3]
+// expect 77 in cell[3]
+
+!(test_stack_pointer_independence){
+    [-] +77 ^1        // push 77 from cell[0]
+    >5 [-] +99        // unrelated: cell[5] = 99
+    <5 >3             // move to cell[3]
+    v .1 ?(nl)        // pop → cell[3]; expect 77
+    <3
+}
+
+
+// ── test 10: multi-byte arg (^3) ──────────────────────────────────────────────
+// pass three consecutive cells as one entry; function prints each byte
+// expect 10, 20, 30
+
+!(print_triple)(^3){
+    [-] > [-] > [-] > [-] > [-] <4
+    v                 // pop 3-byte entry → cell[0..2]
+    .1 ?(nl)          // expect 10
+    > .1 ?(nl)        // expect 20
+    > .1 ?(nl)        // expect 30
+    <2
+}
+
+!(test_multibyte_arg){
+    [-] > [-] > [-] > [-] > [-] <4
+    [-] +10           // cell[0] = 10
+    > [-] +20         // cell[1] = 20
+    > [-] +30         // cell[2] = 30
+    <2
+    ^3                // push 3 bytes as one stack entry
+    ?(print_triple)
+}
+
+
+// ── test 11: multi-byte return (^2) ───────────────────────────────────────────
+// function returns a 2-byte pair; caller prints both bytes
+// expect 65, 66
+
+!(make_pair)()(^2){
+    [-] +65           // cell[0] = 65
+    > [-] +66         // cell[1] = 66
+    < ^2              // push 2-byte return
+}
+
+!(test_multibyte_ret){
+    ?(make_pair)
+    v                 // pop 2-byte entry → cell[0..1]
+    .1 ?(nl)          // expect 65
+    > .1 ?(nl)        // expect 66
+    <
+}
+
+
+// ── test 12: multi-byte arg + multi-byte return ────────────────────────────────
+// pass a 2-byte entry (40, 50); function adds 1 to each byte and returns the pair
+// expect 41, 51
+
+!(inc_pair)(^2)(^2){
+    v                 // pop 2-byte entry → cell[0..1]
+    +                 // cell[0] += 1
+    > +               // cell[1] += 1
+    < ^2              // push 2-byte return
+}
+
+!(test_multibyte_arg_ret){
+    [-] +40           // cell[0] = 40
+    > [-] +50         // cell[1] = 50
+    < ^2              // push as one 2-byte arg
+    ?(inc_pair)
+    v                 // pop 2-byte return → cell[0..1]
+    .1 ?(nl)          // expect 41
+    > .1 ?(nl)        // expect 51
+    <
+}
+
+
+// ── main ──────────────────────────────────────────────────────────────────────
+
+!(main){
+    [-] +49 . [-] +58 . ?(nl)   // "1:"
+    ?(test_single_arg)           // expect 52
+
+    [-] +50 . [-] +58 . ?(nl)   // "2:"
+    ?(test_two_args)             // expect 10
+
+    [-] +51 . [-] +58 . ?(nl)   // "3:"
+    ?(test_single_ret)           // expect 99
+
+    [-] +52 . [-] +58 . ?(nl)   // "4:"
+    ?(test_arg_and_ret)          // expect 26
+
+    [-] +53 . [-] +58 . ?(nl)   // "5:"
+    ?(test_swap)                 // expect 9, 5
+
+    [-] +54 . [-] +58 . ?(nl)   // "6:"
+    ?(test_move)                 // expect 0, 7
+
+    [-] +55 . [-] +58 . ?(nl)   // "7:"
+    ?(test_wildcard)             // expect 55
+
+    [-] +56 . [-] +58 . ?(nl)   // "8:"
+    ?(test_stack_lifo)           // expect 33, 22, 11
+
+    [-] +57 . [-] +58 . ?(nl)   // "9:"
+    ?(test_stack_pointer_independence)  // expect 77
+
+    [-] +49 . [-] +48 . [-] +58 . ?(nl)  // "10:"
+    ?(test_multibyte_arg)        // expect 10, 20, 30
+
+    [-] +49 . [-] +49 . [-] +58 . ?(nl)  // "11:"
+    ?(test_multibyte_ret)        // expect 65, 66
+
+    [-] +49 . [-] +50 . [-] +58 . ?(nl)  // "12:"
+    ?(test_multibyte_arg_ret)    // expect 41, 51
+}

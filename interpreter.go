@@ -1,5 +1,5 @@
 package main
-
+ 
 import (
 	"fmt"
 	"os"
@@ -195,9 +195,9 @@ func interpret_bytecode(entry []instruction) {
 			case 1:
 				fmt.Print(tape.data[tape.position])
 			case 2:
-				fmt.Printf("0x%02x", tape.data[tape.position])
+				fmt.Printf("%02x", tape.data[tape.position])
 			case 3:
-				fmt.Printf("0b%08b", tape.data[tape.position])
+				fmt.Printf("%08b", tape.data[tape.position])
 			}
 			top.counter++
 		case 7:

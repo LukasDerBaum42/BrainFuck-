@@ -1,5 +1,5 @@
 package main
-
+ 
 import (
 	"fmt"
 	"strconv"
@@ -602,6 +602,7 @@ func comp_extern(counter uint64, code string, ctx compCtx) (uint64, []instructio
 			fmt.Sprintf("@ expected '(' but got %c", code[counter]))
 	}
 
+	counter++
 	n_start := counter
 	for counter < uint64(len(code)) && code[counter] != ')' {
 		if counter+1 < uint64(len(code)) && code[counter] == '/' && code[counter+1] == '/' {
