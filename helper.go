@@ -30,6 +30,62 @@ func pollKey() byte {
 	return 0
 }
 
+// ── stack types ───────────────────────────────────────────────────────────────
+
+const STACK_MAX_ENTRIES = 256
+
+// stackEntry is one element on the bf++ value stack.
+// size == 0 is the underflow sentinel (1 zero byte).
+type stackEntry struct {
+	size uint8
+	data [255]byte
+}
+
+// bfStack is a per-call-frame value stack.
+type bfStack struct {
+	entries [STACK_MAX_ENTRIES]stackEntry
+	top     int // index of next free slot; 0 = empty
+}
+
+func (s *bfStack) push(e stackEntry) bool {
+	if s.top >= STACK_MAX_ENTRIES {
+		return false // overflow
+	}
+	s.entries[s.top] = e
+	s.top++
+	return true
+}
+
+// pop returns the top entry. On underflow returns a 1-zero-byte entry and true for underflow.
+func (s *bfStack) pop() (stackEntry, bool) {
+	if s.top == 0 {
+		var zero stackEntry
+		zero.size = 1
+		return zero, true // underflow
+	}
+	s.top--
+	return s.entries[s.top], false
+}
+
+func (s *bfStack) peek() (stackEntry, bool) {
+	if s.top == 0 {
+		var zero stackEntry
+		zero.size = 1
+		return zero, true
+	}
+	return s.entries[s.top-1], false
+}
+
+// ── sig slot ─────────────────────────────────────────────────────────────────
+
+// sigSlot describes one arg or return slot in a function signature.
+// If wildcard is true, any size is accepted (the 'n' slot).
+// Otherwise exactSize gives the required byte width.
+type sigSlot struct {
+	wildcard  bool
+	exactSize uint8
+}
+
 type instruction struct {
 	instr    uint8
 	value    uint64
@@ -41,6 +97,11 @@ type instruction struct {
 type function struct {
 	name      string
 	instructs []instruction
+	// isMacro == true  → no own stack; body runs on caller's stack directly
+	// isMacro == false → owns a stack; args/returns transferred per signature
+	isMacro   bool
+	args      []sigSlot // nil when isMacro
+	returns   []sigSlot // nil when isMacro; empty slice = no returns declared
 }
 
 type frame struct {
@@ -60,6 +121,7 @@ type loopInfo struct {
 
 var FUNCTS map[string]function
 var TAPES map[string]tape_t
+var IMPORTED map[string]bool
 
 // callSite records a name reference (function call, tape switch, switch case)
 // together with enough context to point at it in an error message.
@@ -75,7 +137,7 @@ var called_tapes  []callSite
 
 // keywordBytes lists every single-byte character that is a language keyword.
 // The multi-byte keyword '§' is checked separately in validateName.
-const keywordBytes = "+-<>[].,!?$*:(){}"
+const keywordBytes = "+-<>[].,!?$§*:^v@(){}"
 
 // validateName returns an error if name contains a keyword character or whitespace.
 // nameStart is the byte offset of name[0] within code (used for error reporting).

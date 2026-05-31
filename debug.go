@@ -4,7 +4,6 @@ import (
 	"fmt"
 )
 
-
 // ── debug printing ────────────────────────────────────────────────────────────
 
 func print_bytecode(bytecode []instruction, is_in_func bool) {
@@ -60,5 +59,11 @@ func print_inst(ele instruction, is_in_func bool) {
 		} else {
 			fmt.Print("switch_tape ", ele.value, " ", ele.f_name, "\n")
 		}
+	case 14:
+		fmt.Print("push_copy ", ele.value, "\n")
+	case 15:
+		fmt.Print("push_move ", ele.value, "\n")
+	case 16:
+		fmt.Print("pop\n")
 	}
 }

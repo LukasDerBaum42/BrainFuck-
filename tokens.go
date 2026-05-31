@@ -89,6 +89,27 @@ func make_bytecode(code string, ctx compCtx) ([]instruction, error) {
 				return bytecode, err
 			}
 			bytecode = append(bytecode, temp)
+
+		case '^':
+			var temp instruction
+			var err error
+			counter, temp, err = comp_push(counter, code, ctx)
+			if err != nil {
+				return bytecode, err
+			}
+			bytecode = append(bytecode, temp)
+		case 'v':
+			var temp instruction
+			counter, temp = comp_pop(counter)
+			bytecode = append(bytecode, temp)
+		case '@':
+			var temp []instruction
+			var err error
+			counter, temp, err = comp_extern(counter, code, ctx)
+			if err != nil {
+				return bytecode, err
+			}
+			bytecode = append(bytecode, temp...)
 		}
 	}
 
