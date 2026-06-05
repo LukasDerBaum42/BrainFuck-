@@ -80,13 +80,14 @@ func parseSigSlots(counter uint64, code string, ctx compCtx) (uint64, []sigSlot,
 
 	var slots []sigSlot
 
+	
 	for {
 		// skip whitespace
 		for counter < uint64(len(code)) && (code[counter] == ' ' || code[counter] == '\t' || code[counter] == '\n' || code[counter] == '\r') {
 			counter++
 		}
 		if counter >= uint64(len(code)) {
-			return counter, nil, showErrorWithNote(ctx, code,
+			return counter, slots, showErrorWithNote(ctx, code,
 				counter, "signature never closed with ')'",
 				openParen, "opened here",
 			)
@@ -100,37 +101,89 @@ func parseSigSlots(counter uint64, code string, ctx compCtx) (uint64, []sigSlot,
 			counter++
 			continue
 		}
-		// 'n' wildcard
 		if code[counter] == 'n' {
-			slots = append(slots, sigSlot{wildcard: true})
-			counter++
+			var err error
+			var slot sigSlot
+			counter, slot, err = parseSigSlot(counter, code, ctx)
+			if err != nil {
+				return counter, slots, err
+			}
+			slots = append(slots, slot)
+			//counter++ // skip 'n'
 			continue
 		}
-		// '^' followed by number
 		if code[counter] == '^' {
-			counter++ // skip '^'
-			if counter >= uint64(len(code)) || code[counter] < '1' || code[counter] > '9' {
-				return counter, nil, showError(ctx, code, counter-1, "error",
-					"expected a size (1–255) after '^' in function signature")
+			var err error
+			var slot sigSlot
+			counter, slot, err = parseSigSlot(counter, code, ctx)
+			if err != nil {
+				return counter, slots, err
 			}
-			temp := string(code[counter])
-			counter++
-			for counter < uint64(len(code)) && code[counter] >= '0' && code[counter] <= '9' {
-				temp += string(code[counter])
-				counter++
-			}
-			sz, err := strconv.ParseUint(temp, 10, 64)
-			if err != nil || sz == 0 || sz > 255 {
-				return counter, nil, showError(ctx, code, counter, "error",
-					fmt.Sprintf("signature size must be 1–255, got %s", temp))
-			}
-			slots = append(slots, sigSlot{exactSize: uint8(sz)})
+			slots = append(slots, slot)
+			// counter++ // skip '^'
 			continue
 		}
+		
 		return counter, nil, showError(ctx, code, counter, "error",
 			fmt.Sprintf("unexpected character '%c' in function signature", code[counter]))
 	}
 	return counter, slots, nil
+}
+
+
+func parseSigSlot(counter uint64, code string, ctx compCtx) (uint64, sigSlot, error) {
+	openParen := counter
+	slot := sigSlot{}
+	// 'n' wildcard
+	for counter < uint64(len(code)) && (code[counter] == ' ' || code[counter] == '\t' || code[counter] == '\n' || code[counter] == '\r') {
+		counter++
+	}
+	if counter >= uint64(len(code)) {
+		return counter, slot, showErrorWithNote(ctx, code,
+			counter, "signature never closed with ')'",
+			openParen, "opened here",
+		)
+	}
+	if code[counter] == 'n' {
+		slot.wildcard = true
+		counter++
+	}
+	// '^' followed by number
+	if code[counter] == '^' {
+		counter++ // skip '^'
+		if counter >= uint64(len(code)) || code[counter] < '1' || code[counter] > '9' {
+			return counter, slot, showError(ctx, code, counter-1, "error",
+				"expected a size (1–255) after '^' in function signature")
+		}
+		temp := string(code[counter])
+		counter++
+		for counter < uint64(len(code)) && code[counter] >= '0' && code[counter] <= '9' {
+			temp += string(code[counter])
+			counter++
+		}
+		sz, err := strconv.ParseUint(temp, 10, 64)
+		if err != nil || sz == 0 || sz > 255 {
+			return counter, slot, showError(ctx, code, counter, "error",
+				fmt.Sprintf("signature size must be 1–255, got %s", temp))
+		}
+		slot.exactSize = uint8(sz)
+	}
+	for counter < uint64(len(code)) && (code[counter] == ' ' || code[counter] == '\t' || code[counter] == '\n' || code[counter] == '\r') {
+		counter++
+	}
+	if code[counter] == ':' {
+		counter++ // skip '('
+		for counter < uint64(len(code)) && (code[counter] == ' ' || code[counter] == '\t' || code[counter] == '\n' || code[counter] == '\r') {
+			counter++
+		}
+		type_name := ""
+		for counter < uint64(len(code)) && code[counter] != ')' && code[counter] != '{' && code[counter] != '(' && code[counter] != ',' && code[counter] != ' ' {
+			type_name += string(code[counter])
+			counter++
+		}
+		slot.type_ = type_name
+	}
+	return counter, slot, nil
 }
 
 
@@ -577,6 +630,43 @@ func comp_pop(counter uint64) (uint64, instruction) {
 	return counter, instruction{instr: 16}
 }
 
+
+func comp_extern_func(counter uint64, code string, ctx compCtx) (uint64, []sigSlot, []sigSlot, error) {
+	var argSlots []sigSlot
+	var retSlots []sigSlot
+
+	// skip whitespace
+	for counter < uint64(len(code)) && (code[counter] == ' ' || code[counter] == '\t') {
+		counter++
+	}
+
+	if counter < uint64(len(code)) && code[counter] == '(' {
+		// has arg signature → function mode
+		var err error
+		counter, argSlots, err = parseSigSlots(counter, code, ctx)
+		if err != nil {
+			return counter, argSlots,retSlots, err
+		}
+
+		// skip whitespace
+		for counter < uint64(len(code)) && (code[counter] == ' ' || code[counter] == '\t') {
+			counter++
+		}
+
+		// optional return signature
+		if counter < uint64(len(code)) && code[counter] == '(' {
+			counter, retSlots, err = parseSigSlots(counter, code, ctx)
+			if err != nil {
+				return counter, argSlots, retSlots, err
+			}
+		}
+		// if no return parens, retSlots stays nil → no returns
+	}
+
+	return counter, argSlots, retSlots, nil
+}
+
+
 func comp_extern(counter uint64, code string, ctx compCtx) (uint64, []instruction, error) {
 	counter++ // skip '@'
 	instuc := instruction{instr: 17, value: 0}
@@ -596,6 +686,7 @@ func comp_extern(counter uint64, code string, ctx compCtx) (uint64, []instructio
 			counter++
 		}
 	}
+	
 
 	if counter >= uint64(len(code)) || code[counter] != '(' {
 		return counter, []instruction{}, showError(ctx, code, counter-1, "error",
@@ -634,12 +725,12 @@ func comp_extern(counter uint64, code string, ctx compCtx) (uint64, []instructio
 	IMPORTED[name] = true
 	instuc.f_name = name
 
-	if instuc.value != 0 {
-		return counter, []instruction{}, showError(ctx, code,
-			counter, "error",
-			"import type not yet supported",
-		)
-	}
+	// if instuc.value != 0 {
+	// 	return counter, []instruction{}, showError(ctx, code,
+	// 		counter, "error",
+	// 		"import type not yet supported",
+	// 	)
+	// }
 
 	instructions := []instruction{instuc}
 	
@@ -665,6 +756,22 @@ func comp_extern(counter uint64, code string, ctx compCtx) (uint64, []instructio
 			return counter, []instruction{instuc}, err
 		}
 		instructions = append(instructions, new_bytecode...)
+	} else if instuc.value == 1 {
+		LIB_PATH = append(LIB_PATH, name)
+	} else if instuc.value == 2 {
+		HEADER = append(HEADER, name)
+	} else if instuc.value == 3 {
+		var err error
+		var externFunc extern = extern{name: name}
+		var args []sigSlot
+		var results []sigSlot
+		counter, args, results, err = comp_extern_func(counter, code, ctx)
+		if err != nil {
+			return counter, []instruction{}, err
+		}
+		externFunc.args = args
+		externFunc.returns = results
+		EXTERN[name] = externFunc
 	}
 	
 	return counter, instructions, nil

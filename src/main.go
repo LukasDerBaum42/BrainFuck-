@@ -175,6 +175,9 @@ Language reference:
 	TAPES = make(map[string]tape_t)
 	TAPES["main"] = tape_t{name: "main", data: [0xFFFF + 1]byte{}, position: 0}
 	IMPORTED = make(map[string]bool)
+	EXTERN = make(map[string]extern)
+	HEADER = make([]string, 0)
+	LIB_PATH = make([]string, 0)
 
 	called_functs = make([]callSite, 0)
 	called_tapes = make([]callSite, 0)
@@ -189,10 +192,12 @@ Language reference:
 	// and point at the exact call site if not.
 	not_found := false
 	for _, cs := range called_functs {
-		if _, ok := FUNCTS[cs.name]; !ok {
-			showError(cs.ctx, cs.code, cs.nameOffset, "error",
-				fmt.Sprintf("function '%s' is called here but never defined", cs.name))
-			not_found = true
+		if _, ok1 := FUNCTS[cs.name]; !ok1 {
+			if _, ok2 := EXTERN[cs.name]; !ok2 {
+				showError(cs.ctx, cs.code, cs.nameOffset, "error",
+					fmt.Sprintf("function '%s' is called here but never defined", cs.name))
+				not_found = true
+			}
 		}
 	}
 	for _, cs := range called_tapes {

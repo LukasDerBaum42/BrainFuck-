@@ -84,6 +84,11 @@ func (s *bfStack) peek() (stackEntry, bool) {
 type sigSlot struct {
 	wildcard  bool
 	exactSize uint8
+	type_     string
+	// ints will use i32 and floats will use f32 with the number of bits specified
+	// eg. uint8 is u8, int64 is i64, float32 is f32 and so on
+	// strings are always str
+	// structs are given by name
 }
 
 type instruction struct {
@@ -104,6 +109,12 @@ type function struct {
 	returns   []sigSlot // nil when isMacro; empty slice = no returns declared
 }
 
+type extern struct {
+	name      string
+	args      []sigSlot
+	returns   []sigSlot
+}
+
 type frame struct {
 	bytecode []instruction
 	counter  uint64
@@ -119,9 +130,12 @@ type loopInfo struct {
     count    uint64 // iterations completed
 }
 
-var FUNCTS map[string]function
-var TAPES map[string]tape_t
-var IMPORTED map[string]bool
+var FUNCTS 		map[string]function
+var EXTERN 		map[string]extern
+var TAPES 		map[string]tape_t
+var IMPORTED 	map[string]bool
+var HEADER 		[]string
+var LIB_PATH 	[]string
 
 // callSite records a name reference (function call, tape switch, switch case)
 // together with enough context to point at it in an error message.

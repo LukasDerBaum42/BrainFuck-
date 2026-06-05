@@ -1,5 +1,5 @@
 package main
- 
+
 import (
 	"fmt"
 	"os"
@@ -12,12 +12,17 @@ import (
 
 func compile_to_c(bytecode []instruction, out_name string) {
 	var sb strings.Builder
-	
+
 	sb.WriteString("#include <stdlib.h>\n")
 	sb.WriteString("#include <stdio.h>\n")
 	sb.WriteString("#include <stdint.h>\n")
 	sb.WriteString("#include <string.h>\n")
-	
+
+
+	for _, header := range HEADER {
+		sb.WriteString(fmt.Sprintf("#include %s\n", header))
+	}
+	sb.WriteString("\n")
 
 	if runtime.GOOS == "windows" {
 		sb.WriteString("#include <windows.h>\n\n")
@@ -126,7 +131,13 @@ func compile_to_c(bytecode []instruction, out_name string) {
 			sb.WriteString(fmt.Sprintf("void f_%s(BFStack *caller_stack);\n", name))
 		}
 	}
+	for name := range EXTERN {
+		sb.WriteString(fmt.Sprintf("void f_%s(BFStack *caller_stack);\n", name))
+	}
 	sb.WriteString("\n")
+
+	// ── extern function bodies ───────────────────────────────────────────────────
+	write_extern_wrappers(&sb)
 
 	// ── function bodies ───────────────────────────────────────────────────
 	for name, fn := range FUNCTS {
@@ -140,7 +151,7 @@ func compile_to_c(bytecode []instruction, out_name string) {
 
 			// arg transfer
 			if len(fn.args) > 0 {
-				sb.WriteString(fmt.Sprintf("  { uint8_t _arg_sizes[] = {"))
+				sb.WriteString("  { uint8_t _arg_sizes[] = {")
 				for i, s := range fn.args {
 					if i > 0 {
 						sb.WriteString(", ")
@@ -151,16 +162,17 @@ func compile_to_c(bytecode []instruction, out_name string) {
 						sb.WriteString(fmt.Sprintf("%d", s.exactSize))
 					}
 				}
-				sb.WriteString(fmt.Sprintf("};\n"))
+				sb.WriteString("};\n")
 				sb.WriteString(fmt.Sprintf("    bfstack_transfer_args(caller_stack, &own_stack, _arg_sizes, %d, \"%s\"); }\n",
 					len(fn.args), name))
 			}
+
 
 			write_c_body(&sb, fn.instructs, "  ", false)
 
 			// return transfer
 			if len(fn.returns) > 0 {
-				sb.WriteString(fmt.Sprintf("  { uint8_t _ret_sizes[] = {"))
+				sb.WriteString("  { uint8_t _ret_sizes[] = {")
 				for i, s := range fn.returns {
 					if i > 0 {
 						sb.WriteString(", ")
@@ -171,7 +183,7 @@ func compile_to_c(bytecode []instruction, out_name string) {
 						sb.WriteString(fmt.Sprintf("%d", s.exactSize))
 					}
 				}
-				sb.WriteString(fmt.Sprintf("};\n"))
+				sb.WriteString("};\n")
 				sb.WriteString(fmt.Sprintf("    bfstack_transfer_rets(&own_stack, caller_stack, _ret_sizes, %d, \"%s\"); }\n",
 					len(fn.returns), name))
 			}
@@ -200,6 +212,89 @@ func compile_to_c(bytecode []instruction, out_name string) {
 		os.Remove(out_name + ".c")
 	}
 }
+
+func write_extern_wrappers(sb *strings.Builder) {
+	for name, ext := range EXTERN {
+		sb.WriteString(fmt.Sprintf("\nvoid f_%s(BFStack *caller_stack) {\n", name))
+		sb.WriteString("  BFStack own_stack = {0};\n")
+
+		// arg transfer
+		if len(ext.args) > 0 {
+			sb.WriteString("  { uint8_t _arg_sizes[] = {")
+			for i, s := range ext.args {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				if s.wildcard {
+					sb.WriteString("0")
+				} else {
+					sb.WriteString(fmt.Sprintf("%d", s.exactSize))
+				}
+			}
+			sb.WriteString(fmt.Sprintf("};\n    bfstack_transfer_args(caller_stack, &own_stack, _arg_sizes, %d, \"%s\"); }\n",
+				len(ext.args), name))
+		}
+
+		// pop args and declare typed locals
+		for i, s := range ext.args {
+			sb.WriteString(fmt.Sprintf("  BFEntry _ae%d = bfstack_pop(&own_stack);\n", i))
+			// sb.WriteString(fmt.Sprintf("  %s _a%d;\n", externCTypeName(s.type_), i))
+			if s.type_ == "str" {
+				sb.WriteString(fmt.Sprintf("  char *_a%d = (char*)_ae%d.data;\n", i, i))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %s _a%d;\n", externCTypeName(s.type_), i))
+				sb.WriteString(fmt.Sprintf("  memcpy(&_a%d, _ae%d.data, sizeof(%s));\n", i, i, externCTypeName(s.type_)))
+			}
+		}
+
+		// build call
+		var callArgs []string
+		for i := range ext.args {
+			callArgs = append(callArgs, fmt.Sprintf("_a%d", i))
+		}
+		callExpr := fmt.Sprintf("%s(%s)", name, strings.Join(callArgs, ", "))
+
+		// emit call + push return
+		if len(ext.returns) == 0 {
+			sb.WriteString(fmt.Sprintf("  %s;\n", callExpr))
+		} else if len(ext.returns) == 1 {
+			cName := externCTypeName(ext.returns[0].type_)
+			sb.WriteString(fmt.Sprintf("  %s _r0 = %s;\n", cName, callExpr))
+			sb.WriteString(fmt.Sprintf("  bfstack_push(caller_stack, sizeof(%s), (uint8_t*)&_r0);\n", cName))
+		} else {
+			sb.WriteString(fmt.Sprintf("  // TODO: multiple return values for extern '%s'\n", name))
+			sb.WriteString(fmt.Sprintf("  %s;\n", callExpr))
+		}
+
+		sb.WriteString("}\n")
+	}
+}
+
+
+
+func externCTypeName(t string) string {
+	if len(t) > 1 {
+		switch t[0] {
+		case 'u':
+			return fmt.Sprintf("uint%s_t", t[1:])
+		case 'i':
+			return fmt.Sprintf("int%s_t", t[1:])
+		case 'f':
+			if t[1:] == "64" {
+				return "double"
+			}
+			return "float"
+		}
+	}
+	if t == "str" {
+		return "char*"
+	}
+	if t == "bool" {
+		return "_Bool"
+	}
+	return t // struct name as-is
+}
+
 
 func write_c_body(sb *strings.Builder, bytecode []instruction, indent string, isMacro bool) {
 	// Which stack variable name are we operating on?
@@ -292,9 +387,11 @@ func write_c_body(sb *strings.Builder, bytecode []instruction, indent string, is
 
 func invoke_compiler(out_name string) error {
 	args := []string{"-O2", "-o", out_name, out_name + ".c"}
+	args = append(args, LIB_PATH...)
 	if *compiler_args != "" {
 		args = append(args, strings.Fields(*compiler_args)...)
 	}
+	fmt.Printf("%s %s\n", *compiler, strings.Join(args, " "))
 	cmd := exec.Command(*compiler, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
