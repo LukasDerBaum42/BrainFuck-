@@ -64,6 +64,16 @@ func compile_to_c(bytecode []instruction, out_name string) {
 		sb.WriteString("}\n\n")
 	}
 
+	if *print_bycode {
+		sb.WriteString("void PrintArray(uint8_t *data_arr, uint8_t data_length) {\n")
+		sb.WriteString("    while (data_length--) {\n")
+		sb.WriteString("        printf(\"0x%02x \", *data_arr);\n")
+		sb.WriteString("        *data_arr++;\n")
+		sb.WriteString("    }\n")
+		sb.WriteString("    printf(\"\\n\");\n")
+		sb.WriteString("}\n\n")
+	}
+
 	// ── stack struct ─────────────────────────────────────────────────────
 	sb.WriteString("// bf++ value stack\n")
 	sb.WriteString("typedef struct { uint8_t size; uint8_t data[255]; } BFEntry;\n")
@@ -73,6 +83,10 @@ func compile_to_c(bytecode []instruction, out_name string) {
 	sb.WriteString("  if (s->top == 255) { fprintf(stderr, \"runtime error: stack overflow\\n\"); exit(1); }\n")
 	sb.WriteString("  s->entries[s->top].size = sz;\n")
 	sb.WriteString("  memcpy(s->entries[s->top].data, bytes, sz);\n")
+	if *print_bycode {
+		sb.WriteString("  printf(\"pushed %d bytes\\n\", sz);\n")
+		sb.WriteString("  PrintArray(s->entries[s->top].data, sz);\n")
+	}
 	sb.WriteString("  s->top++;\n")
 	sb.WriteString("}\n\n")
 
@@ -236,7 +250,8 @@ func write_extern_wrappers(sb *strings.Builder) {
 		}
 
 		// pop args and declare typed locals
-		for i, s := range ext.args {
+		for i := len(ext.args) - 1; i >= 0; i-- {
+			s := ext.args[i]
 			sb.WriteString(fmt.Sprintf("  BFEntry _ae%d = bfstack_pop(&own_stack);\n", i))
 			// sb.WriteString(fmt.Sprintf("  %s _a%d;\n", externCTypeName(s.type_), i))
 			if s.type_ == "str" {
